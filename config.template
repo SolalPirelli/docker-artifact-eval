@@ -1,0 +1,98 @@
+# How many containers to create
+CONFIG_CONTAINER_COUNT=4
+# Number of cores to allocate to each container
+CONFIG_CONTAINER_CPUS=4
+# 'yes' if containers need to access each other via SSH, 'no' otherwise
+CONFIG_CONTAINER_SSH='yes'
+# Extra packages to install on each container
+# 'sudo' is often needed since many scripts assume it exists
+# 'git' is often needed to fetch code
+CONFIG_CONTAINER_PACKAGES='sudo git'
+# Shell to use on the containers (including extra parameters, e.g. 'bash -euxo pipefail' for debugging)
+CONFIG_CONTAINER_SHELL='sh'
+# The prefix to use when naming containers
+CONFIG_CONTAINER_PREFIX='node'
+# The name of the base container and image
+CONFIG_CONTAINER_BASE='base'
+
+# Which Docker image to use as the OS
+CONFIG_OS_IMAGE='ubuntu:latest'
+# The command the OS uses to update its local package repository
+CONFIG_OS_PACKAGE_UPDATE='apt-get update'
+# The command the OS uses to install packages
+CONFIG_OS_PACKAGE_INSTALL='apt-get install -y'
+# The name of the OS package that provides 'ip'
+CONFIG_OS_IP_PACKAGE='iproute2'
+# The name of the OS package that provides 'tc'
+CONFIG_OS_TC_PACKAGE='iproute2'
+# The name of the OS package that provides 'sshd'
+CONFIG_OS_SSHD_PACKAGE='openssh-server'
+# The command used to start sshd
+CONFIG_OS_SSHD_START='service ssh start'
+
+
+# === Helper functions ====
+
+# Executes on the container at 1-based index $1 the script text $2.
+exec_on()
+{
+  sudo docker exec "$CONFIG_CONTAINER_PREFIX$1" $CONFIG_CONTAINER_SHELL -c "$2"
+}
+# Same as exec_on, but redirects the output to the container's log file
+exec_on_silent()
+{
+  exec_on "$1" "$2" 1>> "$CONFIG_CONTAINER_PREFIX$1.log" 2>&1
+}
+# Same as exec_on_silent, but $2 is a file instead of text.
+exec_on_file()
+{
+  cat "$2" | sudo docker exec --interactive "$CONFIG_CONTAINER_PREFIX$1" $CONFIG_CONTAINER_SHELL 1>> "$CONFIG_CONTAINER_PREFIX$1.log" 2>&1
+}
+# Executes the script text $1 on all containers in parallel, and redirects the outputs to the containers' log files.
+exec_all()
+{
+  for i in $(seq 1 $CONFIG_CONTAINER_COUNT); do
+    exec_on_silent "$i" "$1" &
+  done
+  wait
+}
+# Same as exec_all, but $1 is a file instead of text.
+exec_all_file()
+{
+  for i in $(seq 1 $CONFIG_CONTAINER_COUNT); do
+    exec_on_file "$i" "$1" &
+  done
+  wait
+}
+# Copies file $1 on the host to path $2 on all containers.
+copy_all()
+{
+  for i in $(seq 1 $CONFIG_CONTAINER_COUNT); do
+    sudo docker cp "$1" "$CONFIG_CONTAINER_PREFIX$i:$2"
+  done
+}
+# Replaces on the container at 1-based index $1 the entire line in file $2 containing regex $3 (escape backslashes!) by the replacement line $4.
+replace_line_on()
+{
+  exec_on "$1" "sed -i '/$3/c\\$4' $2"
+}
+# Replaces on all containers the entire line in file $1 containing regex $2 (escape backslashes!) by the replacement line $3.
+replace_line()
+{
+  exec_all "sed -i '/$2/c\\$3' $1"
+}
+# Gets the IP of the container at 1-based index $1.
+get_ip()
+{
+  exec_on "$1" 'ip route get 8.8.8.8 | head -1 | cut -d " " -f7' 2>/dev/null
+}
+# Adds latency to the container at 1-based index $1 of $2 ms, i.e., the RTT between that container and any other container increases by $1ms.
+add_latency_on()
+{
+  exec_on_silent "$1" "tc qdisc add dev eth0 root netem delay ${1}ms"
+}
+# Adds latency of $1 ms to all containers, i.e., the RTT between any two containers will be 2x$1ms.
+add_latency()
+{
+  exec_all "tc qdisc add dev eth0 root netem delay ${1}ms"
+}
