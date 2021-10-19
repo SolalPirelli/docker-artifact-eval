@@ -1,15 +1,8 @@
-# Docker for artifact eval
+# Docker for artifact eval example
 
-This repo contains helper scripts to run an artifact on multiple "machines", but using Docker containers instead of machines,
-making it easy to test an artifact without having to own multiple machines or pay for VMs on a cloud provider.
+This is an example of using this repo for an artifact, in this case Rabia for SOSP'21.
 
-Edit `./config` with the values the artifact needs, such as packages.
+Rabia was originally intended to run on some cloud VMs, but these scripts retrofit it to run in a Docker container instead,
+including faking network latency to mimic different VM layouts across regions.
 
-Call `./setup.sh` first to set up the containers, optionally passing a custom setup script to e.g. clone the artifact's repository.
-Then, load `./config` and use its helper functions as necessary.
-Finally, run `./teardown.sh` to tear down the containers.
-
-The first time `./setup.sh` is run, it will take a while as it needs to create a Docker image for the artifact.
-Future runs are quick as it only needs to create containers from that image.
-
-See the `rabia` branch for an example: retrofitting the Rabia artifact from SOSP'21.
+The entry point is `rabia.sh`.
